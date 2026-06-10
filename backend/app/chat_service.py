@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from typing import Optional
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.config import Settings
-from app.schemas import ChatMessage, ChatRequest, ChatResponse
+from app.schemas import ChatMessage, ChatRequest, ChatResponse, Source
 
 
 class MissingApiKeyError(RuntimeError):
@@ -40,9 +41,10 @@ class ConversationStore:
 
 
 class ChatService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, rag_service: Optional[object] = None) -> None:
         self._settings = settings
         self._store = ConversationStore(max_messages=settings.max_history_messages)
+        self._rag_service = rag_service
 
     def create_session_id(self) -> str:
         return uuid4().hex
@@ -59,15 +61,36 @@ class ChatService:
             streaming=streaming,
         )
 
-    async def _build_messages(self, request: ChatRequest, session_id: str) -> list[BaseMessage]:
+    async def _build_messages(
+        self, request: ChatRequest, session_id: str
+    ) -> tuple[list[BaseMessage], list[Source]]:
         system_prompt = request.system_prompt or self._settings.system_prompt
+        sources: list[Source] = []
+
+        if request.use_knowledge_base and request.knowledge_base_id and self._rag_service:
+            top_k = request.top_k or self._settings.rag_top_k
+            context, sources = self._rag_service.retrieve(
+                request.knowledge_base_id,
+                request.message,
+                top_k,
+            )
+            if context:
+                system_prompt = (
+                    f"{system_prompt}\n\n"
+                    "Use the following knowledge base context when relevant. "
+                    "If the context does not contain enough information, say so clearly. "
+                    "Do not invent facts that are not supported by the context.\n\n"
+                    f"{context}"
+                )
+
         history = await self._store.get(session_id)
-        return [SystemMessage(content=system_prompt), *history, HumanMessage(content=request.message)]
+        messages = [SystemMessage(content=system_prompt), *history, HumanMessage(content=request.message)]
+        return messages, sources
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
         session_id = request.session_id or self.create_session_id()
         llm = self._build_llm()
-        messages = await self._build_messages(request, session_id)
+        messages, sources = await self._build_messages(request, session_id)
 
         response = await llm.ainvoke(messages)
         answer = str(response.content)
@@ -80,18 +103,21 @@ class ChatService:
             session_id=session_id,
             message=answer,
             history=self._serialize_history(history),
+            sources=sources,
         )
 
-    async def stream(self, request: ChatRequest, session_id: str) -> AsyncIterator[str]:
+    async def stream(self, request: ChatRequest, session_id: str) -> AsyncIterator[tuple[str, object]]:
         llm = self._build_llm(streaming=True)
-        messages = await self._build_messages(request, session_id)
+        messages, sources = await self._build_messages(request, session_id)
         chunks: list[str] = []
+
+        yield "sources", [source.model_dump() for source in sources]
 
         async for chunk in llm.astream(messages):
             content = chunk.content
             if isinstance(content, str) and content:
                 chunks.append(content)
-                yield content
+                yield "token", content
 
         answer = "".join(chunks)
         await self._store.append(

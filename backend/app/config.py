@@ -43,6 +43,11 @@ class Settings:
     max_history_messages: int
     allowed_origins: list[str]
     system_prompt: str
+    rag_storage_dir: str
+    rag_embedding_model: str
+    rag_chunk_size: int
+    rag_chunk_overlap: int
+    rag_top_k: int
 
     def __init__(self) -> None:
         self.deepseek_api_key = getenv("DEEPSEEK_API_KEY")
@@ -55,6 +60,11 @@ class Settings:
             "CHATBOT_SYSTEM_PROMPT",
             "You are a helpful, concise chatbot. Answer in the user's language.",
         )
+        self.rag_storage_dir = getenv("RAG_STORAGE_DIR", "storage")
+        self.rag_embedding_model = getenv("RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
+        self.rag_chunk_size = _get_int("RAG_CHUNK_SIZE", 800)
+        self.rag_chunk_overlap = _get_int("RAG_CHUNK_OVERLAP", 120)
+        self.rag_top_k = _get_int("RAG_TOP_K", 4)
 
 
 @lru_cache

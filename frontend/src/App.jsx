@@ -1,4 +1,13 @@
-import { Bot, Loader2, RefreshCcw, Send, UserRound, Waves } from "lucide-react";
+import {
+  Bot,
+  Database,
+  Loader2,
+  RefreshCcw,
+  Send,
+  Upload,
+  UserRound,
+  Waves
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
@@ -12,11 +21,12 @@ const starterMessages = [
   }
 ];
 
-function createMessage(role, content) {
+function createMessage(role, content, sources = []) {
   return {
     id: crypto.randomUUID(),
     role,
-    content
+    content,
+    sources
   };
 }
 
@@ -65,14 +75,25 @@ export default function App() {
     "You are a helpful, concise chatbot. Answer in the user's language."
   );
   const [isStreaming, setIsStreaming] = useState(true);
+  const [useKnowledgeBase, setUseKnowledgeBase] = useState(false);
+  const [knowledgeBaseId, setKnowledgeBaseId] = useState("default");
+  const [uploadFile, setUploadFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const scrollRef = useRef(null);
+  const messagesRef = useRef(null);
 
   const canSend = useMemo(() => input.trim().length > 0 && !isLoading, [input, isLoading]);
+  const canUpload = useMemo(
+    () => Boolean(uploadFile) && knowledgeBaseId.trim().length > 0 && !isUploading,
+    [uploadFile, knowledgeBaseId, isUploading]
+  );
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    }
   }, [messages]);
 
   useEffect(() => {
@@ -85,6 +106,11 @@ export default function App() {
     event.preventDefault();
     const content = input.trim();
     if (!content || isLoading) {
+      return;
+    }
+
+    if (useKnowledgeBase && !knowledgeBaseId.trim()) {
+      setError("请先输入 Knowledge Base ID。");
       return;
     }
 
@@ -115,15 +141,21 @@ export default function App() {
     }
   }
 
+  function buildChatPayload(content) {
+    return {
+      message: content,
+      session_id: sessionId || undefined,
+      system_prompt: systemPrompt || undefined,
+      use_knowledge_base: useKnowledgeBase,
+      knowledge_base_id: useKnowledgeBase ? knowledgeBaseId.trim() : undefined
+    };
+  }
+
   async function sendRegularMessage(content, assistantId) {
     const response = await fetch(buildApiUrl("/api/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: content,
-        session_id: sessionId || undefined,
-        system_prompt: systemPrompt || undefined
-      })
+      body: JSON.stringify(buildChatPayload(content))
     });
 
     if (!response.ok) {
@@ -135,7 +167,9 @@ export default function App() {
     setSessionId(data.session_id);
     setMessages((current) =>
       current.map((message) =>
-        message.id === assistantId ? { ...message, content: data.message } : message
+        message.id === assistantId
+          ? { ...message, content: data.message, sources: data.sources || [] }
+          : message
       )
     );
   }
@@ -144,11 +178,7 @@ export default function App() {
     const response = await fetch(buildApiUrl("/api/chat/stream"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: content,
-        session_id: sessionId || undefined,
-        system_prompt: systemPrompt || undefined
-      })
+      body: JSON.stringify(buildChatPayload(content))
     });
 
     if (!response.ok) {
@@ -159,6 +189,15 @@ export default function App() {
     await parseSseStream(response, {
       session: (payload) => {
         setSessionId(payload.session_id);
+      },
+      sources: (payload) => {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId
+              ? { ...message, sources: payload.sources || [] }
+              : message
+          )
+        );
       },
       token: (payload) => {
         setMessages((current) =>
@@ -173,6 +212,57 @@ export default function App() {
         throw new Error(payload.message || "流式接口返回错误。");
       }
     });
+  }
+
+  async function uploadDocument(event) {
+    event.preventDefault();
+
+    const kbId = knowledgeBaseId.trim();
+    if (!kbId) {
+      setUploadStatus("请先输入 Knowledge Base ID。");
+      return;
+    }
+
+    if (!uploadFile) {
+      setUploadStatus("请选择 .txt 或 .md 文件。");
+      return;
+    }
+
+    const filename = uploadFile.name.toLowerCase();
+    if (!filename.endsWith(".txt") && !filename.endsWith(".md")) {
+      setUploadStatus("当前只支持 .txt 和 .md 文件。");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadStatus("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+
+      const response = await fetch(
+        buildApiUrl(`/api/knowledge-bases/${encodeURIComponent(kbId)}/documents`),
+        {
+          method: "POST",
+          body: formData
+        }
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || "上传失败。");
+      }
+
+      const data = await response.json();
+      setUseKnowledgeBase(true);
+      setUploadFile(null);
+      setUploadStatus(`已上传 ${data.filename}，切分为 ${data.chunks} 个片段。`);
+    } catch (err) {
+      setUploadStatus(err instanceof Error ? err.message : "上传失败。");
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   async function resetSession() {
@@ -223,6 +313,46 @@ export default function App() {
           </button>
         </div>
 
+        <div className="toggle-row">
+          <span>Knowledge Base</span>
+          <button
+            type="button"
+            className={`switch ${useKnowledgeBase ? "is-on" : ""}`}
+            onClick={() => setUseKnowledgeBase((value) => !value)}
+            aria-pressed={useKnowledgeBase}
+          >
+            <span />
+          </button>
+        </div>
+
+        <label className="field">
+          <span>Knowledge Base ID</span>
+          <input
+            value={knowledgeBaseId}
+            onChange={(event) => setKnowledgeBaseId(event.target.value)}
+            placeholder="default"
+          />
+        </label>
+
+        <form className="upload-box" onSubmit={uploadDocument}>
+          <label className="file-picker">
+            <Database size={17} />
+            <span>{uploadFile ? uploadFile.name : "选择 .txt / .md"}</span>
+            <input
+              type="file"
+              accept=".txt,.md,text/plain,text/markdown"
+              onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
+            />
+          </label>
+
+          <button type="submit" disabled={!canUpload}>
+            {isUploading ? <Loader2 className="spin" size={17} /> : <Upload size={17} />}
+            Upload
+          </button>
+
+          {uploadStatus ? <p className="upload-status">{uploadStatus}</p> : null}
+        </form>
+
         <div className="session-box">
           <span>Session</span>
           <code>{sessionId || "new"}</code>
@@ -246,18 +376,30 @@ export default function App() {
           </div>
         </header>
 
-        <div className="messages" aria-live="polite">
+        <div className="messages" aria-live="polite" ref={messagesRef}>
           {messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>
               <span className="avatar">
                 {message.role === "user" ? <UserRound size={18} /> : <Bot size={18} />}
               </span>
               <div className="bubble">
-                {message.content || (isLoading ? <Loader2 className="spin" size={18} /> : null)}
+                <div>
+                  {message.content || (isLoading ? <Loader2 className="spin" size={18} /> : null)}
+                </div>
+                {message.sources?.length ? (
+                  <div className="sources">
+                    <span>Sources</span>
+                    {message.sources.map((source) => (
+                      <details key={source.chunk_id || `${source.filename}-${source.content}`}>
+                        <summary>{source.filename || "Knowledge chunk"}</summary>
+                        <p>{source.content}</p>
+                      </details>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </article>
           ))}
-          <div ref={scrollRef} />
         </div>
 
         {error ? <div className="error-banner">{error}</div> : null}

@@ -13,3 +13,4 @@ node_modules/
 *.log
 backend/.env
 frontend/.env
+backend/storage/

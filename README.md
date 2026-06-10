@@ -7,6 +7,7 @@
 - 模型：DeepSeek API，默认 `deepseek-v4-flash`
 - 前端：Vite + React
 - 会话：使用 `session_id` 区分多轮对话，历史记录暂存在内存中
+- RAG：支持上传 `.txt` / `.md` 到本地 Chroma 知识库并返回引用来源
 
 DeepSeek API 兼容 OpenAI API 格式，官方文档给出的 OpenAI `base_url` 是 `https://api.deepseek.com`。
 
@@ -17,8 +18,10 @@ backend/
   app/
     main.py          # FastAPI 路由
     chat_service.py  # LangChain + DeepSeek 调用和会话历史
+    rag_service.py   # 文档上传、切分、embedding、Chroma 检索
     config.py        # 环境变量配置
     schemas.py       # 请求/响应模型
+  storage/           # 本地上传文件和 Chroma 数据，已被 gitignore 忽略
   requirements.txt
   .env.example
 frontend/
@@ -40,6 +43,7 @@ cp backend/.env.example backend/.env
 ```bash
 DEEPSEEK_API_KEY=你的 DeepSeek API Key
 DEEPSEEK_MODEL=deepseek-v4-flash
+RAG_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
 ```
 
 ## 2. 启动后端
@@ -82,7 +86,51 @@ curl -X POST http://localhost:8010/api/chat \
   -d '{"session_id":"上一次返回的 session_id","message":"继续展开第二点。"}'
 ```
 
-## 3. 启动前端
+## 3. 使用知识库 RAG
+
+上传 `.txt` 或 `.md` 文档到知识库：
+
+```bash
+curl -X POST http://localhost:8010/api/knowledge-bases/default/documents \
+  -F "file=@/path/to/demo.md"
+```
+
+使用知识库进行普通聊天：
+
+```bash
+curl -X POST http://localhost:8010/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "根据知识库总结一下核心内容",
+    "use_knowledge_base": true,
+    "knowledge_base_id": "default"
+  }'
+```
+
+使用知识库进行流式聊天：
+
+```bash
+curl -N -X POST http://localhost:8010/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "根据知识库列出三个要点",
+    "use_knowledge_base": true,
+    "knowledge_base_id": "default"
+  }'
+```
+
+流式接口会发送这些 SSE 事件：
+
+```text
+session
+sources
+token
+done
+```
+
+第一次使用本地 embedding 模型时，`sentence-transformers` 可能需要下载模型文件。
+
+## 4. 启动前端
 
 ```bash
 cd frontend
@@ -106,7 +154,14 @@ cp frontend/.env.example frontend/.env
 VITE_API_BASE_URL=http://localhost:8010
 ```
 
-## 4. 运行测试
+前端侧边栏支持：
+
+- 输入 `Knowledge Base ID`
+- 上传 `.txt` / `.md`
+- 打开或关闭知识库检索
+- 在 AI 回复下方查看 sources
+
+## 5. 运行测试
 
 ```bash
 cd backend
@@ -118,5 +173,6 @@ pytest
 
 - 用 Redis 或 PostgreSQL 替换内存会话历史
 - 增加登录和用户隔离
-- 增加 RAG 文档问答
+- 增加文档列表、删除文档、重建索引
+- 增加 hybrid search、rerank 和检索评测
 - 增加工具调用和模型参数配置
