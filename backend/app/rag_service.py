@@ -1,20 +1,16 @@
 from __future__ import annotations
-
 import re
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
-
 from fastapi import UploadFile
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
 from app.config import Settings
 from app.schemas import Source
-
 
 class RagService:
     def __init__(self, settings: Settings) -> None:

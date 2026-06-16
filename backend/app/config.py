@@ -77,7 +77,6 @@ class Settings:
         self.rag_chunk_overlap = _get_int("RAG_CHUNK_OVERLAP", 120)
         self.rag_top_k = _get_int("RAG_TOP_K", 4)
 
-
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

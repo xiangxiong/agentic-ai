@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from app.chat_service import ChatService, MissingApiKeyError, sse_event
 from app.config import get_settings
 from app.rag_service import RagService
+from app.rag_service_sop import get_sop_rag_service
 from app.schemas import ChatRequest, ChatResponse, DocumentUploadResponse, HealthResponse
 from pydantic import BaseModel,Field
 from openai import OpenAI
@@ -119,6 +120,23 @@ TOOLS = [
                 "required": ["order_id", "amount"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_sop_knowledge",
+            "description": "当用户询问平台政策、退货规则、海关拦截、发货规范等合规/流程问题时调用此工具，从客服 SOP 知识库检索标准答案。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "需要检索的政策或流程问题，尽量保留用户原意"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
@@ -143,7 +161,6 @@ client = OpenAI(
 
 class ChatRequest(BaseModel):
     user_input:str = Field(...,description="人工客服或前端用户的输入内容")
-
 
 @app.post("/api/copilot/chat")
 async def copilot_chat(request:ChatRequest):
@@ -203,5 +220,29 @@ async def copilot_chat(request:ChatRequest):
             "content": execution_result
         }
             
+    except Exception as e:
+        raise HTTPException(status_code=500,detail=str(e))
+
+
+class SopQueryRequest(BaseModel):
+    query:str = Field(...,description="SOP 检索问题")
+
+@app.post("/api/sop/query")
+async def query_sop(request:SopQueryRequest) -> dict[str,str]:
+    try:
+        print(f"Query{request.query}");
+        result = get_sop_rag_service(settings).query_knowledge_base(request.query);
+        return {"result":result}
+    except Exception as e:
+        raise HTTPException(status_code=500,detail=str(e))
+
+class GenerateRequest(BaseModel):
+    query:str = Field(...,description="SOP 生成问题")
+
+@app.post("/api/sop/generate")
+async def generate(request:GenerateRequest) -> dict[str,str]:
+    try:
+        result = get_sop_rag_service(settings).embed(request.query);
+        return {"result":result}
     except Exception as e:
         raise HTTPException(status_code=500,detail=str(e))
