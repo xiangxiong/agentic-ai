@@ -1,6 +1,8 @@
 import json;
 from collections.abc import AsyncIterator;
+from pydoc import describe
 from typing import Any, Optional;
+from backend.tool.M3_UGL_2 import response
 from openai import OpenAI;
 
 from app.config import Settings;
@@ -114,15 +116,68 @@ class CopilotService:
         return None;
 
     # SOP + RAG 回复.
-    def reply_with_sop_rag():
-        return None;
+    def reply_with_sop_rag(self,user_input:str) -> dict[str,Any]:
+        knowledge_context = self._sop_rag.query_knowledge_base(user_input);
+        response = self._client.chat.completions.create(
+            model=self._settings.zhipu_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": RAG_SYSTEM_PROMPT_TEMPLATE.format(context=knowledge_context),
+                },
+                {"role": "user", "content": user_input},
+            ]
+        )
+        
+        context = response.choices[0].message.content;
 
-    def stream_sop_rag_reply():
-        return None;
+        return {
+            "type": "RAG_KNOWLEDGE",
+            "decision": "REPLY",
+            "response": context
+        }
+
+
+    def _stream_sop_rag_reply(
+        self, user_input: str, knowledge_context: str
+    ) -> AsyncIterator[str]:
+        stream = self._client.chat.completions.create(
+            model=self._settings.zhipu_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": RAG_SYSTEM_PROMPT_TEMPLATE.format(context=knowledge_context),
+                },
+                {"role": "user", "content": user_input},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
 
     # 响应构造
-    def build_tool_response():
-        return None;
+    def build_tool_response(
+        self,
+        *,
+        decision: str,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        content: str | None = None,
+        reason: str | None = None,
+    )->dict[str,Any]:
+        payload:dict[str,Any] = {
+            "type": "TOOL_CALL",
+            "decision": "EXECUTED",
+            "tool_name": tool_name,
+            "arguments": tool_args
+        }
+        if content is not None:
+            payload["content"] = content;
+        if reason is not None:
+            payload["reason"] = reason;
+        return payload;
 
 _copilot_service:Optional[CopilotService] = None;
 
