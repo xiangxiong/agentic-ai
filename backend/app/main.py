@@ -8,8 +8,8 @@ from app.chat_service import ChatService, MissingApiKeyError, sse_event
 from app.config import get_settings
 from app.rag_service import RagService
 from app.rag_service_sop import get_sop_rag_service
-from app.schemas import ChatRequest, ChatResponse, DocumentUploadResponse, HealthResponse
-from typing import Any
+from app.schemas import ChatRequest, ChatResponse, CoplotRequest, DocumentUploadResponse, HealthResponse
+from typing import Any, Optional
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
@@ -42,12 +42,33 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/copilot/sse")
+async def copilot_sse(request: CoplotRequest) -> StreamingResponse:
+    session_id = request.session_id or chat_service.create_session_id()
+    chat_request = ChatRequest(message=request.user_input, session_id=session_id)
+
+    async def event_stream() -> AsyncIterator[str]:
+        yield sse_event("session", {"session_id": session_id})
+        try:
+            async for event, payload in chat_service.stream1(chat_request, session_id):
+                if event == "sources":
+                    yield sse_event("sources", {"sources": payload})
+                else:
+                    yield sse_event("token", {"content": payload})
+            yield sse_event("done", {"session_id": session_id})
+        except Exception as exc:
+            yield sse_event("error", {"message": str(exc)})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @app.post("/api/chat/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     session_id = request.session_id or chat_service.create_session_id()
 
     async def event_stream() -> AsyncIterator[str]:
         yield sse_event("session", {"session_id": session_id})
+
         try:
             async for event, payload in chat_service.stream(request, session_id):
                 if event == "sources":
@@ -63,7 +84,6 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             yield sse_event("error", {"message": "Chat completion failed."})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
-
 
 @app.post("/api/knowledge-bases/{kb_id}/documents", response_model=DocumentUploadResponse)
 async def upload_knowledge_document(
@@ -165,7 +185,6 @@ def execute_system_tool(name:str,args:dict)->str:
         return f"[系统原生返回] 成功为订单 {args.get('order_id')} 提交退款 {args.get('amount')} 元。"
     return "未知工具"
 
-
 # ==========================================
 # 3. 核心路由与请求结构
 # ==========================================
@@ -174,11 +193,11 @@ client = OpenAI(
     base_url=settings.zhipu_base_url,
 )
 
-class ChatRequest(BaseModel):
-    user_input:str = Field(...,description="人工客服或前端用户的输入内容")
+class CopilotChatRequest(BaseModel):
+    user_input: str = Field(..., description="人工客服或前端用户的输入内容")
 
 @app.post("/api/copilot/chat")
-async def copilot_chat(request:ChatRequest):
+async def copilot_chat(request: CopilotChatRequest):
     user_msg = request.user_input
 
     try:
@@ -192,10 +211,8 @@ async def copilot_chat(request:ChatRequest):
             tools=TOOLS,
             tool_choice="auto",
         )
-
         response_message = response.choices[0].message
         tool_calls = response_message.tool_calls
-
         print(f"Tool Calls: {tool_calls}")
 
         # 场景 B: LLM 决定调用工具
@@ -207,7 +224,6 @@ async def copilot_chat(request:ChatRequest):
             # Step 2: 引入反思层 (Module 2: Reflection / 风控卡点)
             if tool_name == "apply_refund":
                 refund_amount = tool_args.get("amount",0)
-
                 if refund_amount > 100:
                     return {
                         "type": "TOOL_CALL",

@@ -25,6 +25,9 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
+class CoplotRequest(BaseModel):
+    user_input:str = Field(...,description="人工客服或前端用户的输入内容")
+    session_id:Optional[str] = Field(default=None,description="会话ID")
 
 class ChatResponse(BaseModel):
     session_id: str

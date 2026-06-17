@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_openai import ChatOpenAI
 
 from app.config import Settings
-from app.schemas import ChatMessage, ChatRequest, ChatResponse, Source
+from app.schemas import ChatMessage, ChatRequest, CoplotRequest,ChatResponse, Source
 
 
 class MissingApiKeyError(RuntimeError):
@@ -50,13 +50,13 @@ class ChatService:
         return uuid4().hex
 
     def _build_llm(self, streaming: bool = False) -> ChatOpenAI:
-        if not self._settings.deepseek_api_key:
-            raise MissingApiKeyError("DEEPSEEK_API_KEY is not configured.")
+        if not self._settings.zhipu_api_key:
+            raise MissingApiKeyError("ZHIPU_API_KEY is not configured.")
 
         return ChatOpenAI(
-            api_key=self._settings.deepseek_api_key,
-            base_url=self._settings.deepseek_base_url,
-            model=self._settings.deepseek_model,
+            api_key=self._settings.zhipu_api_key,
+            base_url=self._settings.zhipu_base_url,
+            model=self._settings.zhipu_model,
             temperature=self._settings.deepseek_temperature,
             streaming=streaming,
         )
@@ -74,6 +74,7 @@ class ChatService:
                 request.message,
                 top_k,
             )
+
             if context:
                 system_prompt = (
                     f"{system_prompt}\n\n"
@@ -106,9 +107,36 @@ class ChatService:
             sources=sources,
         )
 
+    async def stream1(self, request: CoplotRequest, session_id: str) -> AsyncIterator[tuple[str, object]]:
+        try:
+            llm = self._build_llm(streaming=True)
+            messages, sources = await self._build_messages(request, session_id)
+
+            chunks:list[str] = [];
+            yield "sources", [source.model_dump() for source in sources]
+            async for chunk in llm.astream(messages):
+                content = chunk.content
+                if isinstance(content, str) and content:
+                    chunks.append(content);
+                    yield "token", content
+
+            answer = "".join(chunks);
+            await self._store.append(
+                session_id,
+                [HumanMessage(content=request.message), AIMessage(content=answer)],
+            )
+
+        except Exception as e:
+            print('stream1 error:', type(e).__name__, e)
+            raise;
+
     async def stream(self, request: ChatRequest, session_id: str) -> AsyncIterator[tuple[str, object]]:
         llm = self._build_llm(streaming=True)
+        print('request', request);
+        print('session_id', session_id);
         messages, sources = await self._build_messages(request, session_id)
+        print('messages', messages);
+        print('sources', sources);
         chunks: list[str] = []
 
         yield "sources", [source.model_dump() for source in sources]
@@ -139,7 +167,6 @@ class ChatService:
                 continue
             serialized.append(ChatMessage(role=role, content=str(message.content)))
         return serialized
-
 
 def sse_event(event: str, payload: dict[str, object]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
