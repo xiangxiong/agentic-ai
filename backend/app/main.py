@@ -220,6 +220,14 @@ async def copilot_chat(request:ChatRequest):
             # Step 3: 安全检查通过，执行工具并返回
             execution_result = execute_system_tool(tool_name, tool_args)
 
+            return {
+                "type": "TOOL_CALL",
+                "decision": "EXECUTED",
+                "tool_name": tool_name,
+                "arguments": tool_args,
+                "content": execution_result
+            }
+
         # 场景 A: LLM 认为不需要调工具，直接回复了文本（比如 RAG 话术建议或闲聊）
         knowledge_context = get_sop_rag_service(settings).query_knowledge_base(user_msg)
 
@@ -238,7 +246,7 @@ async def copilot_chat(request:ChatRequest):
             "type": "RAG_KNOWLEDGE",
             "decision": "REPLY",
             "response": rag_response_content,
-        }   
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500,detail=str(e))
