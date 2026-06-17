@@ -60,6 +60,7 @@ class SopRagService:
         )
         return response.data[0].embedding;
 
+
 _sop_rag_service:Optional[SopRagService] = None;
 
 def get_sop_rag_service(settings:Settings)->SopRagService:

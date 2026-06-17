@@ -138,6 +138,20 @@ TOOLS = [
                 "required": ["query"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "call_shadowbot_fetch_logistics",
+            "description": "当客服需要查询Ozon/TikTok电商后台的订单最新物流、需要穿透系统查数据时调用此工具。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string", "description": "订单号"}
+                },
+                "required": ["order_id"]
+            }
+        }
     }
 ]
 
@@ -183,47 +197,51 @@ async def copilot_chat(request:ChatRequest):
         tool_calls = response_message.tool_calls
 
         print(f"Tool Calls: {tool_calls}")
-        
-        # 场景 A: LLM 认为不需要调工具，直接回复了文本（比如 RAG 话术建议或闲聊）
-        if not tool_calls:
-            return {
-                "type":"TEXT",
-                "decision":"REPLY",
-                "response":response_message.content,
-            }
 
         # 场景 B: LLM 决定调用工具
-        tool_calls = tool_calls[0]
-        tool_name = tool_calls.function.name
-        tool_args = json.loads(tool_calls.function.argv if hasattr(tool_calls.function, 'argv') else tool_calls.function.arguments);
+        if tool_calls:
+            tool_calls = tool_calls[0]
+            tool_name = tool_calls.function.name
+            tool_args = json.loads(tool_calls.function.argv if hasattr(tool_calls.function, 'argv') else tool_calls.function.arguments);
 
-        # Step 2: 引入反思层 (Module 2: Reflection / 风控卡点)
-        if tool_name == "apply_refund":
-            refund_amount = tool_args.get("amount",0)
+            # Step 2: 引入反思层 (Module 2: Reflection / 风控卡点)
+            if tool_name == "apply_refund":
+                refund_amount = tool_args.get("amount",0)
 
-            if refund_amount > 100:
-                return {
-                    "type": "TOOL_CALL",
-                    "decision": "INTERCEPTED",
-                    "reason": f"反思层拦截：申请退款金额为 {refund_amount} 元，超过 MVP 阶段安全上限（100元）。已挂起等待主管审批。",
-                    "tool_name": tool_name,
-                    "arguments": tool_args
-                }
+                if refund_amount > 100:
+                    return {
+                        "type": "TOOL_CALL",
+                        "decision": "INTERCEPTED",
+                        "reason": f"反思层拦截：申请退款金额为 {refund_amount} 元，超过 MVP 阶段安全上限（100元）。已挂起等待主管审批。",
+                        "tool_name": tool_name,
+                        "arguments": tool_args
+                    }
 
-        # Step 3: 安全检查通过，执行工具并返回
-        execution_result = execute_system_tool(tool_name, tool_args)
+            # Step 3: 安全检查通过，执行工具并返回
+            execution_result = execute_system_tool(tool_name, tool_args)
+
+        # 场景 A: LLM 认为不需要调工具，直接回复了文本（比如 RAG 话术建议或闲聊）
+        knowledge_context = get_sop_rag_service(settings).query_knowledge_base(user_msg)
+
+        rag_response = client.chat.completions.create(
+            model=settings.zhipu_model,
+            messages=[  
+                {"role":"system","content":f"你是一个客服话术专家。请根据公司官方SOP规范回答客服的问题。规范内容如下：\n{knowledge_context}"},
+                {"role":"user","content":user_msg}
+            ]
+        )
+
+        rag_response_message = rag_response.choices[0].message
+        rag_response_content = rag_response_message.content
 
         return {
-            "type": "TOOL_CALL",
-            "decision": "EXECUTED",
-            "tool_name": tool_name,
-            "arguments": tool_args,
-            "content": execution_result
-        }
-            
+            "type": "RAG_KNOWLEDGE",
+            "decision": "REPLY",
+            "response": rag_response_content,
+        }   
+
     except Exception as e:
         raise HTTPException(status_code=500,detail=str(e))
-
 
 class SopQueryRequest(BaseModel):
     query:str = Field(...,description="SOP 检索问题")
