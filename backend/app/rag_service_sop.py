@@ -19,20 +19,44 @@ class SopRagService:
             api_key=settings.zhipu_api_key,
             base_url=settings.zhipu_base_url
         )
+        self._chroma_client = PersistentClient(path="./chroma_db");
+        self._collection = self._chroma_client.get_or_create_collection(name="customer_sop");
 
     def init_mock_sop_data(self) -> None:
         """ 首次启动时注入 mock SOP 数据 """
+        for i,doc in enumerate(MOCK_SOP_DOCS):
+            embedding = self.embed(doc);
+            self._collection.add(
+                embeddings=[embedding],
+                documents=[doc],
+                ids=[f"sop_doc_{i}"]
+            )   
         print("Succeeded in initialzing SOP Knowledge Base embedding!");
 
     def query_knowledge_base(self,query_text:str) -> str:
-        """ 检索最相关的 SOP 规则  """
-        return "test";
+        """ 
+        检索最相关的 SOP 规则  
+        多智能体协同中的‘知识库 Agent’底层检索逻辑
+        """
+        # 1、将客服提问转化为向量
+        query_embedding = self.embed(query_text);
+
+        # 2、从向量库检索最相关的 top_k 条规则
+        result = self._collection.query(
+            query_embeddings=[query_embedding],
+            n_results=1
+        )
+
+        if result["documents"] and len(result["documents"][0]) > 0:
+            return result['documents'][0][0];
+
+        return "未在知识库中找到相关合规规则. ";
 
     def embed(self,text:str)->list[float]:
         """ 将文本转换为向量 """
         response = self._embedding_client.embeddings.create(
             input=text,
-            model=self._settings.rag_embedding_model
+            model=self._settings.zhipu_embedding_model
         )
         return response.data[0].embedding;
 

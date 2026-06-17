@@ -9,7 +9,8 @@ from app.config import get_settings
 from app.rag_service import RagService
 from app.rag_service_sop import get_sop_rag_service
 from app.schemas import ChatRequest, ChatResponse, DocumentUploadResponse, HealthResponse
-from pydantic import BaseModel,Field
+from typing import Any
+from pydantic import BaseModel, Field
 from openai import OpenAI
 
 settings = get_settings()
@@ -240,8 +241,9 @@ class GenerateRequest(BaseModel):
     query:str = Field(...,description="SOP 生成问题")
 
 @app.post("/api/sop/generate")
-async def generate(request:GenerateRequest) -> dict[str,str]:
+async def generate(request:GenerateRequest) -> dict[str, Any]:
     try:
+        get_sop_rag_service(settings).init_mock_sop_data();
         result = get_sop_rag_service(settings).embed(request.query);
         return {"result":result}
     except Exception as e:
