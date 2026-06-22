@@ -1,5 +1,7 @@
 from __future__ import annotations
 from typing import Optional
+from langsmith import traceable
+from langsmith.wrappers import wrap_openai
 from app.config import Settings
 from chromadb import PersistentClient
 from openai import OpenAI
@@ -19,6 +21,8 @@ class SopRagService:
             api_key=settings.zhipu_api_key,
             base_url=settings.zhipu_base_url
         )
+        if settings.langsmith_tracing_enabled:
+            self._embedding_client = wrap_openai(self._embedding_client)
         self._chroma_client = PersistentClient(path="./chroma_db");
         self._collection = self._chroma_client.get_or_create_collection(name="customer_sop");
 
@@ -33,6 +37,7 @@ class SopRagService:
             )   
         print("Succeeded in initialzing SOP Knowledge Base embedding!");
 
+    @traceable(run_type="retriever", name="sop_query_knowledge_base")
     def query_knowledge_base(self,query_text:str) -> str:
         """ 
         检索最相关的 SOP 规则  
@@ -52,6 +57,7 @@ class SopRagService:
 
         return "未在知识库中找到相关合规规则. ";
 
+    @traceable(run_type="embedding", name="sop_embed")
     def embed(self,text:str)->list[float]:
         """ 将文本转换为向量 """
         response = self._embedding_client.embeddings.create(

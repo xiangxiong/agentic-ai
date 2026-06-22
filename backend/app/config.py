@@ -32,6 +32,13 @@ def _get_int(name: str, default: int) -> int:
         return default
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    value = getenv(name)
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _get_origins() -> list[str]:
     value = getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
     return [origin.strip() for origin in value.split(",") if origin.strip()]
@@ -54,6 +61,9 @@ class Settings:
     rag_chunk_size: int
     rag_chunk_overlap: int
     rag_top_k: int
+    langsmith_tracing_enabled: bool
+    langsmith_api_key: Optional[str]
+    langsmith_project: str
 
     def __init__(self) -> None:
         self.deepseek_api_key = getenv("DEEPSEEK_API_KEY")
@@ -78,6 +88,9 @@ class Settings:
         self.rag_chunk_size = _get_int("RAG_CHUNK_SIZE", 800)
         self.rag_chunk_overlap = _get_int("RAG_CHUNK_OVERLAP", 120)
         self.rag_top_k = _get_int("RAG_TOP_K", 4)
+        self.langsmith_tracing_enabled = _get_bool("LANGCHAIN_TRACING_V2", False)
+        self.langsmith_api_key = getenv("LANGCHAIN_API_KEY") or getenv("LANGSMITH_API_KEY")
+        self.langsmith_project = getenv("LANGCHAIN_PROJECT", "agentic-ai-copilot")
 
 @lru_cache
 def get_settings() -> Settings:

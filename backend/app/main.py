@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from app.chat_service import ChatService, MissingApiKeyError, sse_event
 from app.config import get_settings
+from app.observability import configure_langsmith
 from app.rag_service import RagService
 from app.rag_service_sop import get_sop_rag_service
 from app.schemas import ChatRequest, ChatResponse, CopilotChatRequest, CoplotRequest, DocumentUploadResponse, HealthResponse, SopQueryRequest, GenerateRequest
@@ -14,6 +15,7 @@ from typing import Any, Optional
 from openai import OpenAI;
 
 settings = get_settings()
+configure_langsmith(settings)
 rag_service = RagService(settings)
 chat_service = ChatService(settings, rag_service)
 
@@ -82,7 +84,6 @@ async def copilot_sse(request: CoplotRequest) -> StreamingResponse:
                 elif event == "decision":
                     yield sse_event("decision", payload)
                 elif event == "token":
-                    print("payload" + str(payload));
                     yield sse_event("token", {"content": payload})
                 else:
                     yield sse_event(event, payload if isinstance(payload, dict) else {"data": payload})

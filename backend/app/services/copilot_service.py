@@ -1,9 +1,9 @@
 from __future__ import annotations
 import json;
 from collections.abc import AsyncIterator;
-from pydoc import describe
-from pyexpat import model
 from typing import Any, Optional;
+from langsmith import traceable;
+from langsmith.wrappers import wrap_openai;
 from openai import OpenAI,AsyncOpenAI;
 from app.config import Settings;
 from app.rag_service_sop import SopRagService, get_sop_rag_service;
@@ -100,7 +100,11 @@ class CopilotService:
             api_key=settings.zhipu_api_key,
             base_url=settings.zhipu_base_url
         )
+        if settings.langsmith_tracing_enabled:
+            self._client = wrap_openai(self._client)
+            self._async_client = wrap_openai(self._async_client)
 
+    @traceable(run_type="chain", name="copilot_chat")
     def chat(self,user_input:str)->dict[str,Any]:
         """ 主执行链路: 路由与工具决策 -> 触发反思层 -> 执行工具 """
         """非流式 Copilot 主入口，对应原 copilot_chat"""
@@ -123,6 +127,7 @@ class CopilotService:
         return self.reply_with_sop_rag(user_input);
         
 
+    @traceable(run_type="chain", name="copilot_stream")
     async def stream(self,user_input:str)->AsyncIterator[tuple[str,object]]:
         """SSE 事件流，供 /api/copilot/sse 或 /api/copilot/chat/stream 使用"""
         yield "status", {"stage": "routing"}
@@ -158,6 +163,7 @@ class CopilotService:
         yield "done", {"decision": "REPLY"}
 
     # Step 1: LLM 工具路由.
+    @traceable(run_type="llm", name="copilot_route_with_tools")
     def route_with_tools(self,user_input:str)->list[Any] | None:
         response = self._client.chat.completions.create(
             model = self._settings.zhipu_model,
@@ -187,6 +193,7 @@ class CopilotService:
         return tool_name,json.loads(raw_args);
 
     # Step 2: 反思层 / 风控.
+    @traceable(run_type="chain", name="copilot_refund_guard")
     def check_refund_guard(self,tool_name:str,tool_args:dict[str,Any]
     )->dict[str,Any] | None:
         if tool_name == 'apply_refund':
@@ -208,6 +215,7 @@ class CopilotService:
         )
 
     # Step 3: 工具执行.
+    @traceable(run_type="tool", name="copilot_execute_tool")
     def execute_tool(self,name:str,args:dict[str,Any])->str:
         if name == "fetch_order_status":
             return (
@@ -230,6 +238,7 @@ class CopilotService:
         return "未知工具"
 
     # SOP + RAG 回复.
+    @traceable(run_type="chain", name="copilot_reply_with_sop_rag")
     def reply_with_sop_rag(self,user_input:str) -> dict[str,Any]:
         knowledge_context = self._sop_rag.query_knowledge_base(user_input);
         response = self._client.chat.completions.create(
@@ -252,6 +261,7 @@ class CopilotService:
         }
 
 
+    @traceable(run_type="llm", name="copilot_stream_sop_rag_reply")
     async def _stream_sop_rag_reply(
         self, user_input: str, knowledge_context: str
     ) -> AsyncIterator[str]:
