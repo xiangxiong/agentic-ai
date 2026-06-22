@@ -1,6 +1,7 @@
 from __future__ import annotations
 from collections.abc import AsyncIterator
 import json
+from app.services.copilot_service import get_copilot_service
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -8,10 +9,9 @@ from app.chat_service import ChatService, MissingApiKeyError, sse_event
 from app.config import get_settings
 from app.rag_service import RagService
 from app.rag_service_sop import get_sop_rag_service
-from app.schemas import ChatRequest, ChatResponse, CoplotRequest, DocumentUploadResponse, HealthResponse
+from app.schemas import ChatRequest, ChatResponse, CopilotChatRequest, CoplotRequest, DocumentUploadResponse, HealthResponse, SopQueryRequest, GenerateRequest
 from typing import Any, Optional
-from pydantic import BaseModel, Field
-from openai import OpenAI
+from openai import OpenAI;
 
 settings = get_settings()
 rag_service = RagService(settings)
@@ -42,24 +42,76 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+# @app.post("/api/copilot/sse")
+# async def copilot_sse(request: CoplotRequest) -> StreamingResponse:
+#     session_id = request.session_id or chat_service.create_session_id()
+#     chat_request = ChatRequest(message=request.user_input, session_id=session_id)
+
+#     async def event_stream() -> AsyncIterator[str]:
+#         yield sse_event("session", {"session_id": session_id})
+#         try:
+#             async for event, payload in chat_service.stream1(chat_request, session_id):
+#                 if event == "sources":
+#                     yield sse_event("sources", {"sources": payload})
+#                 else:
+#                     yield sse_event("token", {"content": payload})
+#             yield sse_event("done", {"session_id": session_id})
+#         except Exception as exc:
+#             yield sse_event("error", {"message": str(exc)})
+
+#     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
 @app.post("/api/copilot/sse")
 async def copilot_sse(request: CoplotRequest) -> StreamingResponse:
     session_id = request.session_id or chat_service.create_session_id()
-    chat_request = ChatRequest(message=request.user_input, session_id=session_id)
 
     async def event_stream() -> AsyncIterator[str]:
         yield sse_event("session", {"session_id": session_id})
         try:
-            async for event, payload in chat_service.stream1(chat_request, session_id):
-                if event == "sources":
-                    yield sse_event("sources", {"sources": payload})
-                else:
+            async for event, payload in get_copilot_service(settings).stream(request.user_input):
+                if event == "status":
+                    yield sse_event("status", payload)
+                elif event == "tool_call":
+                    yield sse_event("tool_call", payload)
+                elif event == "intercepted":
+                    yield sse_event("intercepted", payload)
+                elif event == "tool_result":
+                    yield sse_event("tool_result", payload)
+                elif event == "sop":
+                    yield sse_event("sop", payload)
+                elif event == "decision":
+                    yield sse_event("decision", payload)
+                elif event == "token":
+                    print("payload" + str(payload));
                     yield sse_event("token", {"content": payload})
+                else:
+                    yield sse_event(event, payload if isinstance(payload, dict) else {"data": payload})
             yield sse_event("done", {"session_id": session_id})
         except Exception as exc:
             yield sse_event("error", {"message": str(exc)})
+            
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream"
+    )
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    # copilot_service = CopilotService(settings, get_sop_rag_service(settings))
+    # session_id = request.session_id or chat_service.create_session_id()
+    # chat_request = ChatRequest(message=request.user_input, session_id=session_id)
+
+    # async def event_stream() -> AsyncIterator[str]:
+    #     yield sse_event("session", {"session_id": session_id})
+    #     try:
+    #         async for event, payload in chat_service.stream1(chat_request, session_id):
+    #             if event == "sources":
+    #                 yield sse_event("sources", {"sources": payload})
+    #             else:
+    #                 yield sse_event("token", {"content": payload})
+    #         yield sse_event("done", {"session_id": session_id})
+    #     except Exception as exc:
+    #         yield sse_event("error", {"message": str(exc)})
+
+    # return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/api/chat/stream")
@@ -193,9 +245,6 @@ client = OpenAI(
     base_url=settings.zhipu_base_url,
 )
 
-class CopilotChatRequest(BaseModel):
-    user_input: str = Field(..., description="人工客服或前端用户的输入内容")
-
 @app.post("/api/copilot/chat")
 async def copilot_chat(request: CopilotChatRequest):
     user_msg = request.user_input
@@ -267,9 +316,6 @@ async def copilot_chat(request: CopilotChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500,detail=str(e))
 
-class SopQueryRequest(BaseModel):
-    query:str = Field(...,description="SOP 检索问题")
-
 @app.post("/api/sop/query")
 async def query_sop(request:SopQueryRequest) -> dict[str,str]:
     try:
@@ -278,9 +324,6 @@ async def query_sop(request:SopQueryRequest) -> dict[str,str]:
         return {"result":result}
     except Exception as e:
         raise HTTPException(status_code=500,detail=str(e))
-
-class GenerateRequest(BaseModel):
-    query:str = Field(...,description="SOP 生成问题")
 
 @app.post("/api/sop/generate")
 async def generate(request:GenerateRequest) -> dict[str, Any]:

@@ -1,16 +1,12 @@
 from __future__ import annotations
-
 from typing import Optional
-
 from pydantic import BaseModel, Field
-
 
 class Source(BaseModel):
     document_id: str
     filename: str
     chunk_id: str
     content: str
-
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
@@ -20,6 +16,18 @@ class ChatRequest(BaseModel):
     knowledge_base_id: Optional[str] = Field(default=None, max_length=100)
     top_k: Optional[int] = Field(default=None, ge=1, le=10)
 
+
+class CopilotChatRequest(BaseModel):
+    user_input:str = Field(...,description="人工客服或前端用户的输入内容")
+    session_id:Optional[str] = Field(default=None,description="会话ID")
+
+class SopQueryRequest(BaseModel):
+    query:str = Field(...,description="SOP 检索问题")
+
+class GenerateRequest(BaseModel):
+    query:str = Field(...,description="SOP 生成问题")
+
+CoplotRequest = CopilotChatRequest;
 
 class ChatMessage(BaseModel):
     role: str
@@ -35,13 +43,11 @@ class ChatResponse(BaseModel):
     history: list[ChatMessage]
     sources: list[Source] = Field(default_factory=list)
 
-
 class DocumentUploadResponse(BaseModel):
     knowledge_base_id: str
     document_id: str
     filename: str
     chunks: int
-
 
 class HealthResponse(BaseModel):
     status: str

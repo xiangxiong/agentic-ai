@@ -1,21 +1,16 @@
 from __future__ import annotations
-
 import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Optional
 from uuid import uuid4
-
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-
 from app.config import Settings
 from app.schemas import ChatMessage, ChatRequest, CoplotRequest,ChatResponse, Source
 
-
 class MissingApiKeyError(RuntimeError):
     pass
-
 
 class ConversationStore:
     def __init__(self, max_messages: int) -> None:
