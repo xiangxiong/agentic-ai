@@ -1,12 +1,10 @@
 from __future__ import annotations
-
 import json;
 from collections.abc import AsyncIterator;
 from pydoc import describe
 from pyexpat import model
 from typing import Any, Optional;
 from openai import OpenAI,AsyncOpenAI;
-
 from app.config import Settings;
 from app.rag_service_sop import SopRagService, get_sop_rag_service;
 
@@ -140,7 +138,7 @@ class CopilotService:
                 yield "intercepted", intercepted
                 yield "done", {"decision": "INTERCEPTED"}
                 return
-                
+
             execution_result = self.execute_tool(tool_name,tool_args)
             yield "tool_result", self.build_tool_response(
                 decision="EXECUTED",
