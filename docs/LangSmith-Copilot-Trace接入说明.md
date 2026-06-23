@@ -3,7 +3,7 @@
 > 源码位置：`backend/app/services/copilot_service.py`、`backend/app/rag_service_sop.py`、`backend/app/observability.py`  
 > 配置入口：`backend/app/config.py`、`backend/.env`
 
-本文档说明如何在 `backend/app/` 中通过 [LangSmith](https://smith.langchain.com) 观测 **Copilot 多步编排链路**（工具路由 → 风控 → 工具执行 / SOP RAG 回复），便于调试 prompt、分析工具选错原因、评估 RAG 检索质量。
+本文档说明如何在 `backend/app/` 中通过 [LangSmith](https://smith.langchain.com) 观测 **Copilot 多步编排链路**（工具路由 → 风控 → 工具执行 / SOP RAG 回复），便于调试 prompt、分析工具选错原因、评估 RAG 检索质量.
 
 ---
 
@@ -11,10 +11,12 @@
 
 Copilot 服务使用原生 OpenAI SDK（智谱 GLM 兼容接口），不走 LangChain Agent，因此**无法仅靠环境变量**自动获得完整 trace 树。当前方案采用两层 instrumentation：
 
-| 层级 | 手段 | 作用 |
-|------|------|------|
-| 业务编排 | `@traceable` | 记录路由、风控、工具执行、RAG 检索等步骤 |
+
+| 层级                 | 手段            | 作用                                |
+| ------------------ | ------------- | --------------------------------- |
+| 业务编排               | `@traceable`  | 记录路由、风控、工具执行、RAG 检索等步骤            |
 | LLM / Embedding 调用 | `wrap_openai` | 自动记录 model、messages、token、latency |
+
 
 关闭 tracing 时，`@traceable` 基本为 no-op，且不会包装 OpenAI client，对正常运行几乎无影响。
 
@@ -36,6 +38,8 @@ flowchart TD
     E --> I[返回 tool_result]
     H --> J[流式 / 非流式回复]
 ```
+
+
 
 ### 2.2 LangSmith 中的 Trace 结构
 
@@ -67,29 +71,33 @@ copilot_stream (chain)
 
 ## 3. 涉及文件
 
-| 文件 | 改动说明 |
-|------|----------|
-| `backend/app/observability.py` | 启动时写入 LangSmith 环境变量 |
-| `backend/app/config.py` | 读取 tracing 开关、API Key、Project 名称 |
-| `backend/app/main.py` | 在创建 Service 前调用 `configure_langsmith()` |
+
+| 文件                                        | 改动说明                                     |
+| ----------------------------------------- | ---------------------------------------- |
+| `backend/app/observability.py`            | 启动时写入 LangSmith 环境变量                     |
+| `backend/app/config.py`                   | 读取 tracing 开关、API Key、Project 名称         |
+| `backend/app/main.py`                     | 在创建 Service 前调用 `configure_langsmith()`  |
 | `backend/app/services/copilot_service.py` | Copilot 编排层 `@traceable` + `wrap_openai` |
-| `backend/app/rag_service_sop.py` | SOP 检索 / Embedding 层 trace |
-| `backend/requirements.txt` | 新增 `langsmith` 依赖 |
-| `backend/.env.example` | LangSmith 配置示例 |
+| `backend/app/rag_service_sop.py`          | SOP 检索 / Embedding 层 trace               |
+| `backend/requirements.txt`                | 新增 `langsmith` 依赖                        |
+| `backend/.env.example`                    | LangSmith 配置示例                           |
+
 
 ### 3.1 `@traceable` 方法对照表
 
-| 方法 | run_type | 说明 |
-|------|----------|------|
-| `CopilotService.chat` | chain | 非流式 Copilot 顶层入口 |
-| `CopilotService.stream` | chain | SSE 流式 Copilot 顶层入口 |
-| `CopilotService.route_with_tools` | llm | LLM 工具路由决策 |
-| `CopilotService.check_refund_guard` | chain | 反思 / 风控层 |
-| `CopilotService.execute_tool` | tool | 工具执行 |
-| `CopilotService.reply_with_sop_rag` | chain | SOP RAG 非流式回复 |
-| `CopilotService._stream_sop_rag_reply` | llm | SOP RAG 流式生成 |
-| `SopRagService.query_knowledge_base` | retriever | Chroma 向量检索 |
-| `SopRagService.embed` | embedding | 文本向量化 |
+
+| 方法                                     | run_type  | 说明                  |
+| -------------------------------------- | --------- | ------------------- |
+| `CopilotService.chat`                  | chain     | 非流式 Copilot 顶层入口    |
+| `CopilotService.stream`                | chain     | SSE 流式 Copilot 顶层入口 |
+| `CopilotService.route_with_tools`      | llm       | LLM 工具路由决策          |
+| `CopilotService.check_refund_guard`    | chain     | 反思 / 风控层            |
+| `CopilotService.execute_tool`          | tool      | 工具执行                |
+| `CopilotService.reply_with_sop_rag`    | chain     | SOP RAG 非流式回复       |
+| `CopilotService._stream_sop_rag_reply` | llm       | SOP RAG 流式生成        |
+| `SopRagService.query_knowledge_base`   | retriever | Chroma 向量检索         |
+| `SopRagService.embed`                  | embedding | 文本向量化               |
+
 
 ---
 
@@ -112,11 +120,13 @@ LANGCHAIN_API_KEY=lsv2_你的key
 LANGCHAIN_PROJECT=agentic-ai-copilot
 ```
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `LANGCHAIN_TRACING_V2` | 是 | 设为 `true` 开启 tracing |
-| `LANGCHAIN_API_KEY` | 是 | LangSmith API Key（也支持 `LANGSMITH_API_KEY`） |
-| `LANGCHAIN_PROJECT` | 否 | 项目名，默认 `agentic-ai-copilot` |
+
+| 变量                     | 必填  | 说明                                         |
+| ---------------------- | --- | ------------------------------------------ |
+| `LANGCHAIN_TRACING_V2` | 是   | 设为 `true` 开启 tracing                       |
+| `LANGCHAIN_API_KEY`    | 是   | LangSmith API Key（也支持 `LANGSMITH_API_KEY`） |
+| `LANGCHAIN_PROJECT`    | 否   | 项目名，默认 `agentic-ai-copilot`                |
+
 
 建议按环境区分 project，例如：
 
@@ -152,7 +162,7 @@ curl -X POST http://localhost:8000/api/copilot/chat \
   -d '{"user_input": "TikTok 退货运费谁承担？"}'
 ```
 
-3. 打开 [LangSmith Console](https://smith.langchain.com)，进入 `LANGCHAIN_PROJECT` 对应项目，查看最新 trace run。
+1. 打开 [LangSmith Console](https://smith.langchain.com)，进入 `LANGCHAIN_PROJECT` 对应项目，查看最新 trace run。
 
 ---
 
@@ -166,11 +176,13 @@ curl -X POST http://localhost:8000/api/copilot/chat \
 
 ### 暂未接入
 
-| 模块 | 原因 |
-|------|------|
-| `main.py` 中 `/api/copilot/chat` 的旧内联 OpenAI 逻辑 | 与 `CopilotService` 重复，使用独立 client，未走 trace |
-| `chat_service.py`（`/api/chat`） | 走 LangChain `ChatOpenAI`，仅需开环境变量即可自动 trace，无需 `@traceable` |
-| `eval.py` golden dataset 评估 | 可后续迁移至 LangSmith Datasets + Evaluators |
+
+| 模块                                             | 原因                                                                               |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `main.py` 中 `/api/copilot/chat` 的旧内联 OpenAI 逻辑 | 与 `CopilotService` 重复，使用独立 client，未走 trace                                       |
+| `chat_service.py`（`/api/chat`）                 | 走 LangChain `ChatOpenAI`，仅需开环境变量即可自动 trace，无需 `@traceable`                       |
+| `eval.py` golden dataset 评估                    | 已迁移至 LangSmith Datasets + Evaluators，见 [评估体系文档](./LangSmith-Copilot-Eval评估体系.md) |
+
 
 ---
 
@@ -187,11 +199,13 @@ curl -X POST http://localhost:8000/api/copilot/chat \
 - 将 `main.py` 中重复的 `/api/copilot/chat` 逻辑收敛到 `CopilotService.chat`，避免双份实现
 - 在 trace metadata 中附加 `session_id`、`endpoint` 等字段，便于按会话筛选
 
-### Phase 3（可选）
+### Phase 3（已完成）
 
 - 将 `eval.py` 的 `GOLDEN_DATASET` 迁移为 LangSmith Dataset
-- 对 `route_with_tools` 运行 batch evaluation，统计工具路由准确率
-- 失败 case 直接关联 trace，做 Error Analysis
+- 对 `route_with_tools` / `route_intent` 运行 batch evaluation，统计工具路由准确率
+- 失败 case 通过 LangSmith Experiment 关联 trace，做 Error Analysis
+
+详见 [LangSmith Copilot Eval 评估体系](./LangSmith-Copilot-Eval评估体系.md)。
 
 ---
 
@@ -215,3 +229,4 @@ curl -X POST http://localhost:8000/api/copilot/chat \
 **Q: Chat 接口如何 trace？**
 
 - `/api/chat` 使用 LangChain，开启相同环境变量即可，无需额外代码。可在 LangSmith 中为 Chat 与 Copilot 配置不同 `LANGCHAIN_PROJECT` 区分（需按请求动态切换 project，当前未实现）。
+

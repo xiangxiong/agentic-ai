@@ -176,3 +176,20 @@ pytest
 - 增加文档列表、删除文档、重建索引
 - 增加 hybrid search、rerank 和检索评测
 - 增加工具调用和模型参数配置
+
+
+## 评估体系 — LangSmith Datasets + Evaluators
+
+cd backend
+
+# 同步 Dataset 到 LangSmith
+python -m app.eval --mode sync
+
+# 跑 LangSmith Experiment（需 LANGCHAIN_API_KEY + ZHIPU_API_KEY）
+python -m app.eval --mode langsmith --experiment-prefix copilot-routing
+
+# 本地终端报告
+python -m app.eval --mode local
+
+pytest tests/test_evaluators.py tests/test_eval_runner.py -q
+# 12 passed

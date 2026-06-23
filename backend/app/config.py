@@ -64,6 +64,7 @@ class Settings:
     langsmith_tracing_enabled: bool
     langsmith_api_key: Optional[str]
     langsmith_project: str
+    langsmith_eval_dataset: str
 
     def __init__(self) -> None:
         self.deepseek_api_key = getenv("DEEPSEEK_API_KEY")
@@ -91,6 +92,7 @@ class Settings:
         self.langsmith_tracing_enabled = _get_bool("LANGCHAIN_TRACING_V2", False)
         self.langsmith_api_key = getenv("LANGCHAIN_API_KEY") or getenv("LANGSMITH_API_KEY")
         self.langsmith_project = getenv("LANGCHAIN_PROJECT", "agentic-ai-copilot")
+        self.langsmith_eval_dataset = getenv("LANGSMITH_EVAL_DATASET", "copilot-tool-routing-golden")
 
 @lru_cache
 def get_settings() -> Settings:

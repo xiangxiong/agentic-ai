@@ -192,6 +192,15 @@ class CopilotService:
         )
         return tool_name,json.loads(raw_args);
 
+    @traceable(run_type="chain", name="copilot_route_intent")
+    def route_intent(self, user_input: str) -> dict[str, Any]:
+        """Return structured routing output for evaluation and debugging."""
+        tool_calls = self.route_with_tools(user_input)
+        if not tool_calls:
+            return {"tool_name": None, "tool_params": {}}
+        tool_name, tool_args = self.parse_tool_call(tool_calls)
+        return {"tool_name": tool_name, "tool_params": tool_args}
+
     # Step 2: 反思层 / 风控.
     @traceable(run_type="chain", name="copilot_refund_guard")
     def check_refund_guard(self,tool_name:str,tool_args:dict[str,Any]
