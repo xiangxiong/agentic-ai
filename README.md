@@ -1,6 +1,6 @@
 # DeepSeek Chatbot MVP
 
-一个基于 DeepSeek API 的本地 chatbot MVP：
+一个基于 DeepSeek API 的本地 chatbot MVP:
 
 - 后端：Python + FastAPI
 - AI 框架：LangChain
