@@ -13,7 +13,6 @@ def _mock_route(user_input: str) -> dict[str, object]:
             }
     return {"tool_name": "unknown", "tool_params": {}}
 
-
 class TestRunLocalEvaluation:
     def test_mocked_local_report(self) -> None:
         report = run_local_evaluation(route_fn=_mock_route)

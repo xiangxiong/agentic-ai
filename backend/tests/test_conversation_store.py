@@ -3,7 +3,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.chat_service import ConversationStore
 
-
 @pytest.mark.asyncio
 async def test_conversation_store_trims_old_messages() -> None:
     store = ConversationStore(max_messages=2)

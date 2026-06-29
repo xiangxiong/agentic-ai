@@ -1,9 +1,7 @@
 from __future__ import annotations
-
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
 import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
@@ -14,24 +12,19 @@ load_dotenv(_BACKEND_DIR / "reflection" / ".env")
 
 from app.main import app
 
-
 @pytest.fixture
 def api_client() -> TestClient:
     return TestClient(app)
-
 
 def _make_completion(*, content: str | None = None, tool_calls: list[MagicMock] | None = None) -> MagicMock:
     message = MagicMock()
     message.content = content
     message.tool_calls = tool_calls
-
     choice = MagicMock()
     choice.message = message
-
     response = MagicMock()
     response.choices = [choice]
     return response
-
 
 def _make_tool_call(name: str, arguments: dict) -> MagicMock:
     import json
