@@ -3,13 +3,14 @@
 一个基于 DeepSeek API 的本地 chatbot MVP:
 
 - 后端：Python + FastAPI
-- AI 框架：LangChain
+- AI 框架：LangChain.
 - 模型：DeepSeek API，默认 `deepseek-v4-flash`
-- 前端：Vite + React
+- 前端：Vite + React.
 - 会话：使用 `session_id` 区分多轮对话，历史记录暂存在内存中
 - RAG：支持上传 `.txt` / `.md` 到本地 Chroma 知识库并返回引用来源
 
-DeepSeek API 兼容 OpenAI API 格式，官方文档给出的 OpenAI `base_url` 是 `https://api.deepseek.com`。
+DeepSeek API 兼容 OpenAI API 格式，官方文档给出的 OpenAI `base_url` 是 `https://api.deepseek.com`.
+
 
 ## 目录结构
 
@@ -22,8 +23,8 @@ backend/
     config.py        # 环境变量配置
     schemas.py       # 请求/响应模型
   storage/           # 本地上传文件和 Chroma 数据，已被 gitignore 忽略
-  requirements.txt
-  .env.example
+  requirements.txt  
+  .env.example 
 frontend/
   src/
     App.jsx
