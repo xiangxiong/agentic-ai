@@ -6,6 +6,11 @@ class Settings(BaseSettings):
     APP_NAME: str = "FastAPI App"
     APP_ENV: str = "prod"
     DATABASE_URL: str
+
+    # 追加 JWT 核心配置
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES:int = 60
     
     # 读取根目录下的 .env 文件
     model_config = SettingsConfigDict(
