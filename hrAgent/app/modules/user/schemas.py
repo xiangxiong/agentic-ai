@@ -9,7 +9,7 @@ class UserLogin(BaseModel):
     """ 新增用户登录请求模型 """
     email: EmailStr
     password: str
-
+    
 class UserResponse(BaseModel):
     id: int
     username: str

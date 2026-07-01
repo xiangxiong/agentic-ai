@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "asyncpg>=0.31.0",
+    "bcrypt<5",
     "fastapi>=0.138.2",
     "passlib[bcrypt]>=1.7.4",
     "pydantic-settings>=2.0.0",
