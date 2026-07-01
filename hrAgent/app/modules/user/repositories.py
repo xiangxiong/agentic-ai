@@ -5,6 +5,7 @@ from app.db.repositories.base import BaseRepository
 from app.modules.user.models import UserModel
 
 class UserRepository(BaseRepository[UserModel]):
+    """ 用户仓储层 """
     def __init__(self, db: AsyncSession):
         super().__init__(UserModel, db)
 
