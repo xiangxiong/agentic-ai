@@ -9,9 +9,9 @@ def create_app() -> FastAPI:
         description="基于功能领域混合模式的 FastAPI 工程化骨架",
         version="1.0.0"
     )
-
+    
     # 1. 注册全局异常处理器
-    register_exception_handlers(app)
+    register_exception_handlers(app) 
 
     # 2. 挂载路由聚合器
     app.include_router(api_router, prefix="/api")
